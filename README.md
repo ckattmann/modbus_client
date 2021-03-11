@@ -10,5 +10,8 @@ modbus_client requires no external packages apart from the Python Standard Libra
 ## Usage
 ```python
 import modbus_client
+
 c = modbus_client.Client(host='localhost', port=502)
+
 c.read_coil(0)  # return True or False or throws an error
+```
