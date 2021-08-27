@@ -13,7 +13,7 @@ logger.propagate = False  # prevent double logging
 
 
 class Client:
-    def __init__(self, host="localhost", port="520", unit_id=0):
+    def __init__(self, host="localhost", port=502, unit_id=0):
         self.host = host
         self.port = port
         self.unit_id = unit_id
@@ -58,12 +58,26 @@ class Client:
                 res_unit_id,
                 res_function_code,
             ) = struct.unpack("!HHHBB", response[:8])
+            # print(transaction_id, protocol, length, res_unit_id, res_function_code)
         except struct.error:
             logger.error(f"Received incompatible bytes {response}")
             return None
 
         if transaction_id != current_transaction_id:
             logger.error(f"Received non-matching Transaction ID {transaction_id}")
+            return None
+
+        if res_function_code == 128:
+            logger.error("Illegal Function")
+            return None
+        if res_function_code == 129:
+            logger.error("Illegal Data Address")
+            return None
+        if res_function_code == 130:
+            logger.error("Illegal Data Value")
+            return None
+        if res_function_code == 131:
+            logger.error("Slave Device Failure")
             return None
 
         if length != len(response) - 6:
@@ -99,7 +113,8 @@ class Client:
 
         data_frame = struct.pack("!HH", address, quantity)
         response = self.send_request(function_code, data_frame)
-        # print(response)
+        if not response:  # Error, should be in log
+            return None
         data_length = struct.unpack("!B", response[0:1])[0]
         if len(response[1:]) != data_length:
             logger.error(
@@ -115,7 +130,11 @@ class Client:
                 [bool(int(i)) for i in reversed(list(format(data_int, "b")))]
             )
 
-        return bool_list
+        # Return bool or list(bool):
+        if len(bool_list) == 1:
+            return bool_list[0]
+        else:
+            return bool_list
 
     def _read_registers(self, function_code, address, quantity=1, encoding="H"):
         if not type(address) == int or address < 0 or address > 65535:
@@ -126,11 +145,16 @@ class Client:
             raise ValueError(f"Quantity of registers must be >= 1")
         if quantity > 125:
             raise ValueError(f"Quantity of registers must be < 125, not {quantity}")
-        if encoding not in ("H", "h", "e"):
+        if encoding not in ("H", "h", "e", "f"):
             raise ValueError(f"encoding must be 'H', 'h', or 'e'")
+
+        if encoding in ("f"):
+            quantity *= 2
 
         data_frame = struct.pack("!HH", address, quantity)
         response = self.send_request(function_code, data_frame)
+        if not response:  # Error, should be in log
+            return None
         data_length = struct.unpack("!B", response[0:1])[0]
         if len(response[1:]) != data_length:
             logger.error(
@@ -139,28 +163,32 @@ class Client:
             return None
         number_of_values = data_length // struct.calcsize(encoding)
         values = struct.unpack(f"!{number_of_values}{encoding}", response[1:])
-        return values
+
+        if len(values) == 1:
+            return values[0]
+        else:
+            return values
 
     def read_coil(self, address):
-        return self._read_bits(1, address)[0]
+        return self._read_bits(1, address)
 
     def read_coils(self, address, quantity=1):
         return self._read_bits(1, address, quantity)
 
     def read_discrete_input(self, address, quantity=1):
-        return self._read_bits(2, address)[0]
+        return self._read_bits(2, address)
 
     def read_discrete_inputs(self, address, quantity=1):
         return self._read_bits(2, address, quantity)
 
     def read_holding_register(self, address, quantity=1, encoding="H"):
-        return self._read_registers(3, address, quantity, encoding)[0]
+        return self._read_registers(3, address, quantity, encoding)
 
     def read_holding_registers(self, address, encoding="H"):
         return self._read_registers(3, address, encoding=encoding)
 
     def read_input_register(self, address, quantity=1, encoding="H"):
-        return self._read_registers(4, address, quantity, encoding)[0]
+        return self._read_registers(4, address, quantity, encoding)
 
     def read_input_registers(self, address, encoding="H"):
         return self._read_registers(4, address, encoding=encoding)
