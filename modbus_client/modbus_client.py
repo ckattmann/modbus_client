@@ -146,7 +146,7 @@ class Client:
         if quantity > 125:
             raise ValueError(f"Quantity of registers must be < 125, not {quantity}")
         if encoding not in ("H", "h", "e", "f"):
-            raise ValueError(f"encoding must be 'H', 'h', or 'e'")
+            raise ValueError(f"encoding must be 'H', 'h', 'f', or 'e'")
 
         if encoding in ("f"):
             quantity *= 2
