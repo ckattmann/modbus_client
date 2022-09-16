@@ -50,6 +50,7 @@ class Client:
         # Length:           (2 Bytes)   Length of the remaining frame in bytes (Total Length - 6)
         # Unit ID:          (1 Byte)    "Slave ID", inner identifier to route to different units (typically 0)
         # Function Code:    (1 Byte)    1,2,3,4,5,6,15,16,43: Read/Write input/register etc.
+
         try:
             (
                 transaction_id,
@@ -100,29 +101,32 @@ class Client:
 
         return response[8:]
 
-    def _read_bits(self, function_code, address, quantity=1):
+    def _read_bits(self, function_code, start_address, number_of_bits=1):
 
-        if address < 0 or address > 65536:
+        if start_address < 0 or start_address > 65536:
             raise ValueError(f"Address must be in 0 ... 65536, not {address}")
-        if quantity < 1:
+        if number_of_bits < 1:
             raise ValueError(f"Quantity of registers must be >= 1")
-        if function_code in (1, 2) and quantity > 2000:
+        if function_code in (1, 2) and number_of_bits > 2000:
             raise ValueError(
-                f"Quantity of coils/discrete inputs must be < 2000, not {quantity}"
+                f"Quantity of coils/discrete inputs must be < 2000, not {number_of_registers}"
             )
 
-        data_frame = struct.pack("!HH", address, quantity)
+        data_frame = struct.pack("!HH", start_address, number_of_bits)
         response = self.send_request(function_code, data_frame)
         if not response:  # Error, should be in log
             return None
+
         data_length = struct.unpack("!B", response[0:1])[0]
+        data = response[1:]
+
         if len(response[1:]) != data_length:
             logger.error(
                 f"Wrong data length: Header says {data_length}, data length is {len(response[1:])}"
             )
             return None
-        data = response[1:]
-        data_ints = struct.unpack(f"!{data_length}B", response[1:])
+
+        data_ints = struct.unpack(f"!{data_length}B", data)
         bool_list = []
         for data_int in data_ints:
             # There must be a better way! (to convert bytes to a list of booleans)
@@ -136,59 +140,87 @@ class Client:
         else:
             return bool_list
 
-    def _read_registers(self, function_code, address, quantity=1, encoding="H"):
-        if not type(address) == int or address < 0 or address > 65535:
+    def _read_registers(
+        self, function_code, start_address, number_of_registers=1, encoding="H"
+    ):
+
+        # Check the input parameters for correctness:
+        if not type(start_address) == int or start_address < 0 or start_address > 65535:
             raise ValueError(
                 f"Address must be an integer between 0 and 65535, not {address}"
             )
-        if quantity < 1:
+        if number_of_registers < 1:
             raise ValueError(f"Quantity of registers must be >= 1")
-        if quantity > 125:
-            raise ValueError(f"Quantity of registers must be < 125, not {quantity}")
+        if number_of_registers > 125:
+            raise ValueError(
+                f"Quantity of registers must be < 125, not {number_of_registers}"
+            )
         if encoding not in ("H", "h", "e", "f"):
             raise ValueError(f"encoding must be 'H', 'h', 'f', or 'e'")
 
-        if encoding in ("f"):
-            quantity *= 2
+        # if encoding in ("f"):
+        #     number_of_registers *= 2
 
-        data_frame = struct.pack("!HH", address, quantity)
+        data_frame = struct.pack("!HH", start_address, number_of_registers)
         response = self.send_request(function_code, data_frame)
-        if not response:  # Error, should be in log
+        if not response:  # Error, reason should be in log
             return None
+
         data_length = struct.unpack("!B", response[0:1])[0]
-        if len(response[1:]) != data_length:
+        data = response[1:]
+
+        # Check consistency between given data_length and actual length of data:
+        if len(data) != data_length:
             logger.error(
-                f"Wrong data length: Header says {data_length}, data length is {len(response[1:])}"
+                f"Wrong data length in response: Header says {data_length}, data length is {len(response[1:])}"
             )
             return None
-        number_of_values = data_length // struct.calcsize(encoding)
-        values = struct.unpack(f"!{number_of_values}{encoding}", response[1:])
 
+        # Unpack reponse bytes to list of decoded ints or floats:
+        number_of_values = data_length // struct.calcsize(encoding)
+        values = struct.unpack(f"!{number_of_values}{encoding}", data)
+
+        # If only one value, return directly and not as list:
         if len(values) == 1:
             return values[0]
         else:
             return values
 
+    # Convenience functions:
+    # ======================
+
     def read_coil(self, address):
         return self._read_bits(1, address)
 
-    def read_coils(self, address, quantity=1):
-        return self._read_bits(1, address, quantity)
+    def read_coils(self, start_address, number=1):
+        return self._read_bits(1, start_address, number_of_bits)
 
-    def read_discrete_input(self, address, quantity=1):
+    def read_discrete_input(self, address):
         return self._read_bits(2, address)
 
-    def read_discrete_inputs(self, address, quantity=1):
-        return self._read_bits(2, address, quantity)
+    def read_discrete_inputs(self, start_address, number=1):
+        return self._read_bits(2, start_address, number_of_bits)
 
-    def read_holding_register(self, address, quantity=1, encoding="H"):
-        return self._read_registers(3, address, quantity, encoding)
+    def read_holding_register(self, address, encoding="H"):
+        return self._read_registers(
+            3, address, number_of_registers=1, encoding=encoding
+        )
 
-    def read_holding_registers(self, address, encoding="H"):
-        return self._read_registers(3, address, encoding=encoding)
+    def read_holding_registers(self, start_address, number_of_registers, encoding="H"):
+        return self._read_registers(
+            3, start_address, number_of_registers, encoding=encoding
+        )
 
-    def read_input_register(self, address, quantity=1, encoding="H"):
-        return self._read_registers(4, address, quantity, encoding)
+    def read_input_register(self, address, encoding="H"):
+        if encoding in ("f"):
+            raise ValueError(
+                "encoding {encoding} needs to access {struct.calcsize{encoding}} registers, please use read_input_registers() instead (plural)"
+            )
+        return self._read_registers(
+            4, address, number_of_registers=1, encoding=encoding
+        )
 
-    def read_input_registers(self, address, encoding="H"):
-        return self._read_registers(4, address, encoding=encoding)
+    def read_input_registers(self, start_address, number_of_registers, encoding="H"):
+        return self._read_registers(
+            4, start_address, number_of_registers, encoding=encoding
+        )
