@@ -162,22 +162,23 @@ class Client:
         #     number_of_registers *= 2
 
         data_frame = struct.pack("!HH", start_address, number_of_registers)
+
         response = self.send_request(function_code, data_frame)
         if not response:  # Error, reason should be in log
             return None
 
-        data_length = struct.unpack("!B", response[0:1])[0]
+        data_byte_count = struct.unpack("!B", response[0:1])[0]
         data = response[1:]
 
-        # Check consistency between given data_length and actual length of data:
-        if len(data) != data_length:
+        # Check consistency between given data_byte_count and actual length of data:
+        if len(data) != data_byte_count:
             logger.error(
                 f"Wrong data length in response: Header says {data_length}, data length is {len(response[1:])}"
             )
             return None
 
         # Unpack reponse bytes to list of decoded ints or floats:
-        number_of_values = data_length // struct.calcsize(encoding)
+        number_of_values = data_byte_count // struct.calcsize(encoding)
         values = struct.unpack(f"!{number_of_values}{encoding}", data)
 
         # If only one value, return directly and not as list:
@@ -202,6 +203,10 @@ class Client:
         return self._read_bits(2, start_address, number_of_bits)
 
     def read_holding_register(self, address, encoding="H"):
+        if encoding in ("f"):
+            raise ValueError(
+                "encoding {encoding} needs to access {struct.calcsize{encoding}} registers, please use read_input_registers() instead (plural)"
+            )
         return self._read_registers(
             3, address, number_of_registers=1, encoding=encoding
         )
