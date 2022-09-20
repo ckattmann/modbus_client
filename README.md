@@ -54,9 +54,9 @@ Read multiple coils and return the result in a list of booleans.
 
 Read one holding or input register and return the result decoded with the given encoding (see below). To read a 32 or 64 bit value, use the functions for multiple registers below.
 
-`c.read_holding_registers(0, number_of_registers=2, encoding='H')`
+`c.read_holding_registers(address, number_of_registers=2, encoding='H')`
 
-`c.read_input_registers(0, number_of_registers=2, encoding='H')`
+`c.read_input_registers(address, number_of_registers=2, encoding='H')`
 
 Read multiple holding or input registers and return the decoded result. To read one 32 bit value, use `number_of_registers=2`.
 
