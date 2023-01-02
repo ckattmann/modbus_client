@@ -28,9 +28,9 @@ c.read_input_registers(0, number_of_registers=2, encoding='f')
 
 ## Functions
 ### Client Object
-`c = modbus_client.Client(host='127.0.0.1', port=502, unit_id=0)`
+`c = modbus_client.Client(host='localhost', port=502, unit_id=0, loglevel='INFO')`
 
-Instantiate a connection object which can execute various read functions on the Modbus connection. The default `port` for Modbus, 502, requires root to access. `unit_id` is a Modbus-internal parameters which can discern between different sub-devices which is irrelevant if you are directly connected to a device.
+Instantiate a connection object which can execute various read functions on the Modbus connection. The default `port` for Modbus, 502, requires root to access. `unit_id` is a Modbus-internal parameters which can discern between different sub-devices which is irrelevant if you are directly connected to a device. `loglevel` can be either 'DEBUG', 'INFO', 'WARNING', or 'ERROR'.
 
 
 ### Read Coils and Discrete Inputs
@@ -54,9 +54,9 @@ Read multiple coils and return the result in a list of booleans.
 
 Read one holding or input register and return the result decoded with the given encoding (see below). To read a 32 or 64 bit value, use the functions for multiple registers below.
 
-`c.read_holding_registers(0, number_of_registers=2, encoding='H')`
+`c.read_holding_registers(address, number_of_registers=2, encoding='H')`
 
-`c.read_input_registers(0, number_of_registers=2, encoding='H')`
+`c.read_input_registers(address, number_of_registers=2, encoding='H')`
 
 Read multiple holding or input registers and return the decoded result. To read one 32 bit value, use `number_of_registers=2`.
 
