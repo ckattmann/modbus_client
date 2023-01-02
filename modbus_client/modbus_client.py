@@ -1,8 +1,9 @@
 import struct
 import socket
 import logging
+import typing
 
-logger = logging.getLogger("modbus_server_logger")
+logger = logging.getLogger("modbus_client_logger")
 logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(levelname)-10s: %(message)s")
 streamhandler = logging.StreamHandler()
@@ -11,18 +12,29 @@ streamhandler.setFormatter(formatter)
 logger.addHandler(streamhandler)
 logger.propagate = False  # prevent double logging
 
+encodings: typing.TypeAlias = typing.Literal["H", "h", "f", "e"]
+
 
 class Client:
-    def __init__(self, host="localhost", port=502, unit_id=0):
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 502,
+        unit_id: int = 0,
+        loglevel: typing.Literal[
+            "NOTSET", "INFO", "WARNING", "ERROR", "CRITICAL"
+        ] = "INFO",
+    ):
         self.host = host
         self.port = port
         self.unit_id = unit_id
+        logger.setLevel(loglevel)
 
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.connect((host, port))
         self.transaction_id = 0
 
-    def send_request(self, function_code, data_frame):
+    def send_request(self, function_code: int, data_frame: bytes):
 
         pdu_frame = struct.pack("!B", function_code) + data_frame
 
@@ -101,15 +113,17 @@ class Client:
 
         return response[8:]
 
-    def _read_bits(self, function_code, start_address, number_of_bits=1):
+    def _read_bits(
+        self, function_code: int, start_address: int, number_of_bits: int = 1
+    ):
 
         if start_address < 0 or start_address > 65536:
-            raise ValueError(f"Address must be in 0 ... 65536, not {address}")
+            raise ValueError(f"Address must be in 0 ... 65536, not {start_address}")
         if number_of_bits < 1:
             raise ValueError(f"Quantity of registers must be >= 1")
         if function_code in (1, 2) and number_of_bits > 2000:
             raise ValueError(
-                f"Quantity of coils/discrete inputs must be < 2000, not {number_of_registers}"
+                f"Quantity of coils/discrete inputs must be < 2000, not {number_of_bits}"
             )
 
         data_frame = struct.pack("!HH", start_address, number_of_bits)
@@ -117,16 +131,16 @@ class Client:
         if not response:  # Error, should be in log
             return None
 
-        data_length = struct.unpack("!B", response[0:1])[0]
+        data_byte_count = struct.unpack("!B", response[0:1])[0]
         data = response[1:]
 
-        if len(response[1:]) != data_length:
+        if len(response[1:]) != data_byte_count:
             logger.error(
-                f"Wrong data length: Header says {data_length}, data length is {len(response[1:])}"
+                f"Wrong data length: Header says {data_byte_count}, data length is {len(response[1:])}"
             )
             return None
 
-        data_ints = struct.unpack(f"!{data_length}B", data)
+        data_ints = struct.unpack(f"!{data_byte_count}B", data)
         bool_list = []
         for data_int in data_ints:
             # There must be a better way! (to convert bytes to a list of booleans)
@@ -141,13 +155,17 @@ class Client:
             return bool_list
 
     def _read_registers(
-        self, function_code, start_address, number_of_registers=1, encoding="H"
+        self,
+        function_code: int,
+        start_address: int,
+        number_of_registers: int = 1,
+        encoding: encodings = "H",
     ):
 
         # Check the input parameters for correctness:
         if not type(start_address) == int or start_address < 0 or start_address > 65535:
             raise ValueError(
-                f"Address must be an integer between 0 and 65535, not {address}"
+                f"Address must be an integer between 0 and 65535, not {start_address}"
             )
         if number_of_registers < 1:
             raise ValueError(f"Quantity of registers must be >= 1")
@@ -157,9 +175,6 @@ class Client:
             )
         if encoding not in ("H", "h", "e", "f"):
             raise ValueError(f"encoding must be 'H', 'h', 'f', or 'e'")
-
-        # if encoding in ("f"):
-        #     number_of_registers *= 2
 
         data_frame = struct.pack("!HH", start_address, number_of_registers)
 
@@ -173,7 +188,7 @@ class Client:
         # Check consistency between given data_byte_count and actual length of data:
         if len(data) != data_byte_count:
             logger.error(
-                f"Wrong data length in response: Header says {data_length}, data length is {len(response[1:])}"
+                f"Wrong data length in response: Header says {data_byte_count}, data length is {len(response[1:])}"
             )
             return None
 
@@ -190,19 +205,19 @@ class Client:
     # Convenience functions:
     # ======================
 
-    def read_coil(self, address):
+    def read_coil(self, address: int):
         return self._read_bits(1, address)
 
-    def read_coils(self, start_address, number=1):
+    def read_coils(self, start_address: int, number_of_bits: int = 1):
         return self._read_bits(1, start_address, number_of_bits)
 
-    def read_discrete_input(self, address):
+    def read_discrete_input(self, address: int):
         return self._read_bits(2, address)
 
-    def read_discrete_inputs(self, start_address, number=1):
+    def read_discrete_inputs(self, start_address: int, number_of_bits: int = 1):
         return self._read_bits(2, start_address, number_of_bits)
 
-    def read_holding_register(self, address, encoding="H"):
+    def read_holding_register(self, address: int, encoding: encodings = "H"):
         if encoding in ("f"):
             raise ValueError(
                 "encoding {encoding} needs to access {struct.calcsize{encoding}} registers, please use read_input_registers() instead (plural)"
@@ -211,12 +226,14 @@ class Client:
             3, address, number_of_registers=1, encoding=encoding
         )
 
-    def read_holding_registers(self, start_address, number_of_registers, encoding="H"):
+    def read_holding_registers(
+        self, start_address: int, number_of_registers: int, encoding: encodings = "H"
+    ):
         return self._read_registers(
             3, start_address, number_of_registers, encoding=encoding
         )
 
-    def read_input_register(self, address, encoding="H"):
+    def read_input_register(self, address: int, encoding: encodings = "H"):
         if encoding in ("f"):
             raise ValueError(
                 "encoding {encoding} needs to access {struct.calcsize{encoding}} registers, please use read_input_registers() instead (plural)"
@@ -225,7 +242,9 @@ class Client:
             4, address, number_of_registers=1, encoding=encoding
         )
 
-    def read_input_registers(self, start_address, number_of_registers, encoding="H"):
+    def read_input_registers(
+        self, start_address: int, number_of_registers: int, encoding: encodings = "H"
+    ):
         return self._read_registers(
             4, start_address, number_of_registers, encoding=encoding
         )
