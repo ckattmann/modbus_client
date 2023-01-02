@@ -12,7 +12,7 @@ streamhandler.setFormatter(formatter)
 logger.addHandler(streamhandler)
 logger.propagate = False  # prevent double logging
 
-encodings: typing.TypeAlias = typing.Literal["H", "h", "f", "e"]
+encodings = typing.Literal["H", "h", "f", "e"]
 
 
 class Client:
